@@ -1,0 +1,1 @@
+- 2025-02-09: Replaced empty catch blocks in v4/lib/exec.go with calls to centralized error reporter reporter.ReportError
