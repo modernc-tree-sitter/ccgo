@@ -139,6 +139,7 @@ type Task struct {
 	m32                          bool // -m32
 	m64                          bool // -m64
 	noBuiltin                    bool // -fno-builtin
+	noInline                     bool // -fno-inline
 	noMainMinimize               bool // -no-main-minimize
 	noObjFmt                     bool // -no-object-file-format
 	nostdinc                     bool // -nostdinc
@@ -345,6 +346,9 @@ func (t *Task) main() (err error) {
 		return nil
 	})
 	set.Opt("fno-builtin", func(arg string) error { t.noBuiltin = true; t.cfgArgs = append(t.cfgArgs, arg); return nil })
+	// Emit out-of-line copies of static inline functions from headers instead of
+	// only registering them for call-site inlining (needed when their address is taken).
+	set.Opt("fno-inline", func(arg string) error { t.noInline = true; return nil })
 	set.Opt("full-paths", func(arg string) error { t.fullPaths = true; return nil })
 	set.Opt("header", func(arg string) error { t.header = true; return nil })
 	set.Opt("ignore-asm-errors", func(arg string) error { t.ignoreAsmErrors = true; return nil })

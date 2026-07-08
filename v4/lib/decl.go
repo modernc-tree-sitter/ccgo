@@ -349,9 +349,13 @@ func (c *ctx) externalDeclaration(w writer, n *cc.ExternalDeclaration) {
 		// the function to be inlined. If any uses of the function remain, they refer
 		// to the single copy in the library.
 
-		if d.Type().Attributes().AlwaysInline() ||
-			d.Type().Attributes().GNUInline() ||
-			d.IsInline() && c.isHeader(d) {
+		// With -fno-inline, still emit out-of-line bodies (static inline from
+		// headers are otherwise only inlined at call sites; address-taken uses
+		// then reference missing Go funcs).
+		if !c.task.noInline &&
+			(d.Type().Attributes().AlwaysInline() ||
+				d.Type().Attributes().GNUInline() ||
+				d.IsInline() && c.isHeader(d)) {
 			c.inlineFuncs[d] = n.FunctionDefinition
 			return
 		}
