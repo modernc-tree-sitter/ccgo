@@ -253,7 +253,10 @@ type ctx struct {
 	imports             map[string]string // import path: qualifier
 	initPatch           func(int64, *buf)
 	inlineFuncs         map[*cc.Declarator]*cc.FunctionDefinition
-	inlineLabelSuffix   int
+	// inlineOutOfLineNeeded: header/static inlines whose address was taken
+	// (__ccgo_fp); emit standalone bodies after the TU walk.
+	inlineOutOfLineNeeded map[*cc.Declarator]struct{}
+	inlineLabelSuffix     int
 	jsonMeta
 	macrosEmited  nameSet
 	maxAlign      int
@@ -287,25 +290,65 @@ func newCtx(task *Task, eh errHandler) *ctx {
 		maxAlign = 4
 	}
 	return &ctx{
-		anonTypes:           map[cc.Type]string{},
-		cfg:                 task.cfg,
-		defineTaggedStructs: map[string]*cc.StructType{},
-		defineTaggedUnions:  map[string]*cc.UnionType{},
-		eh:                  eh,
-		externsDeclared:     map[string]*cc.Declarator{},
-		externsDefined:      map[string]cc.Node{},
-		externsMentioned:    map[string]struct{}{},
-		fields:              map[fielder]*nameSpace{},
-		imports:             map[string]string{},
-		inlineFuncs:         map[*cc.Declarator]*cc.FunctionDefinition{},
-		maxAlign:            maxAlign,
-		task:                task,
-		verify:              map[cc.Type]struct{}{},
+		anonTypes:             map[cc.Type]string{},
+		cfg:                   task.cfg,
+		defineTaggedStructs:   map[string]*cc.StructType{},
+		defineTaggedUnions:    map[string]*cc.UnionType{},
+		eh:                    eh,
+		externsDeclared:       map[string]*cc.Declarator{},
+		externsDefined:        map[string]cc.Node{},
+		externsMentioned:      map[string]struct{}{},
+		fields:                map[fielder]*nameSpace{},
+		imports:               map[string]string{},
+		inlineFuncs:           map[*cc.Declarator]*cc.FunctionDefinition{},
+		inlineOutOfLineNeeded: map[*cc.Declarator]struct{}{},
+		maxAlign:              maxAlign,
+		task:                  task,
+		verify:                map[cc.Type]struct{}{},
 		jsonMeta: jsonMeta{
 			Aliases:     map[string]string{},
 			Visibility:  map[string]string{},
 			WeakAliases: map[string]string{},
 		},
+	}
+}
+
+// noteInlineFuncPtr records that a header/static inline's address was taken so
+// an out-of-line Go func can be emitted (AddressTaken is often false for
+// function designators in ternaries; __ccgo_fp is the reliable signal).
+func (c *ctx) noteInlineFuncPtr(d *cc.Declarator) {
+	if d == nil {
+		return
+	}
+	if _, ok := c.inlineFuncs[d]; !ok {
+		return
+	}
+	c.inlineOutOfLineNeeded[d] = struct{}{}
+}
+
+// emitInlineOutOfLine emits standalone bodies for header inlines that were
+// only registered for call-site inlining but had their address taken.
+func (c *ctx) emitInlineOutOfLine() {
+	if len(c.inlineOutOfLineNeeded) == 0 {
+		return
+	}
+	type item struct {
+		d  *cc.Declarator
+		fd *cc.FunctionDefinition
+	}
+	var a []item
+	for d := range c.inlineOutOfLineNeeded {
+		fd := c.inlineFuncs[d]
+		if fd == nil {
+			continue
+		}
+		a = append(a, item{d: d, fd: fd})
+	}
+	sort.Slice(a, func(i, j int) bool {
+		return a[i].d.Name() < a[j].d.Name()
+	})
+	for _, it := range a {
+		c.functionDefinition(c, it.fd, "")
 	}
 }
 
@@ -476,6 +519,9 @@ func (c *ctx) compile(ifn, ofn string) (err error) {
 	for n := c.ast.TranslationUnit; n != nil; n = n.TranslationUnit {
 		c.externalDeclaration(c, n.ExternalDeclaration)
 	}
+	// After the TU walk we know which header inlines were address-taken via
+	// __ccgo_fp; emit out-of-line copies so those pointers resolve.
+	c.emitInlineOutOfLine()
 	if c.task.emitFuncAliases {
 		c.emitFunctionAliases()
 	}

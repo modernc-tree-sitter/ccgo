@@ -349,9 +349,10 @@ func (c *ctx) externalDeclaration(w writer, n *cc.ExternalDeclaration) {
 		// the function to be inlined. If any uses of the function remain, they refer
 		// to the single copy in the library.
 
-		// With -fno-inline, still emit out-of-line bodies (static inline from
-		// headers are otherwise only inlined at call sites; address-taken uses
-		// then reference missing Go funcs).
+		// Header/static inlines: register for call-site inlining and skip
+		// standalone emission here. Address-taken uses (__ccgo_fp) request
+		// out-of-line copies via noteInlineFuncPtr → emitInlineOutOfLine after
+		// the TU walk. -fno-inline forces immediate emission of all of them.
 		if !c.task.noInline &&
 			(d.Type().Attributes().AlwaysInline() ||
 				d.Type().Attributes().GNUInline() ||

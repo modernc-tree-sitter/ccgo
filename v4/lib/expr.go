@@ -4587,6 +4587,7 @@ out:
 						p.w("%s", linkName)
 						b.w("%suintptr(%s)", tag(preserve), unsafeAddr(c.pin(n, p)))
 					case cc.Function:
+						c.noteInlineFuncPtr(x)
 						b.w("%s%s(%s)", tag(preserve), ccgoFP, linkName)
 					default:
 						switch {
@@ -4645,6 +4646,7 @@ out:
 					rt = x.Type().Pointer()
 					switch {
 					case x.Type().Kind() == cc.Function:
+						c.noteInlineFuncPtr(x)
 						b.w("%s%s(%s)", tag(preserve), ccgoFP, linkName)
 					default:
 						switch _, ok := c.isVLA(x.Type()); {
